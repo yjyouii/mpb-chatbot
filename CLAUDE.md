@@ -17,6 +17,8 @@
 npm run dev     # 개발 서버 (http://localhost:3000)
 npm run build   # 배포용 빌드 — 타입 오류도 여기서 잡힌다
 npm run lint    # ESLint
+npm run db:check     # 문서 저장소의 표 4개와 줄 수 확인
+npm run db:selftest  # 저장 기능 점검 (시험용 글을 넣었다가 바로 지움)
 ```
 
 - 테스트 도구는 아직 없다. 코드를 고친 뒤에는 `npm run lint`와 `npm run build`로 확인한다.
@@ -33,7 +35,8 @@ npm run lint    # ESLint
 
 ### 추가 기술 (DESIGN.md 3장에서 확정)
 
-- AI: OpenAI API (답변 만들기, 문단을 숫자로 바꾸기)
+- AI: OpenAI API (답변 만들기, 문단을 숫자로 바꾸기 — `text-embedding-3-large`, 길이 1536)
+- 서버 쪽 공용 코드는 `lib/`에, 관리자가 실행하는 스크립트는 `scripts/`에 둔다. 스크립트는 Node.js가 TypeScript를 바로 실행하므로, `lib/` 안팎의 상대 경로 import에는 `.ts` 확장자를 붙인다.
 - 문서 저장과 검색: Supabase 데이터베이스와 pgvector
 - 가져오기: cheerio(홈페이지 읽기), PDF 글자 추출 도구
 - 대화 기록: 브라우저 저장소(localStorage)
@@ -42,7 +45,6 @@ npm run lint    # ESLint
 
 임의로 고르지 말고, 아래에 적힌 시점에 선택지와 추천안을 제시해 사용자에게 확인받는다.
 
-- 문단을 숫자로 바꾸는 모델 (PLAN 작업 4 전)
 - 가져오기 스크립트의 위치와 실행 명령 (PLAN 작업 7 전)
 - 답변용 AI 모델 (PLAN 작업 18)
 

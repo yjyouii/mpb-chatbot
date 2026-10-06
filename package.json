@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:check": "node --env-file=.env scripts/check-db.mjs"
+    "db:check": "node --env-file=.env scripts/check-db.mjs",
+    "db:selftest": "node --env-file=.env scripts/selftest-save.ts"
   },
   "dependencies": {
     "next": "16.3.8",
@@ -23,5 +24,6 @@
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "type": "module"
 }
