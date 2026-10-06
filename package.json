@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "db:check": "node --env-file=.env scripts/check-db.mjs",
-    "db:selftest": "node --env-file=.env scripts/selftest-save.ts"
+    "db:selftest": "node --env-file=.env scripts/selftest-save.ts",
+    "db:samples": "node --env-file=.env scripts/sample-docs.ts"
   },
   "dependencies": {
     "next": "16.3.8",
