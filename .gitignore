@@ -42,3 +42,6 @@ next-env.d.ts
 
 # bkit 플러그인 실행 기록
 /.bkit/
+
+# Claude Code 개인 설정
+/.claude/
