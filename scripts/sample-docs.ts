@@ -13,8 +13,8 @@ const samples: NewDocument[] = [
     title: "「지방정부 국고보조시설 효율화 방안」 도출을 위한 심층평가 착수",
     publishedDate: "2026-10-01",
     department: "재정사업심층평가팀",
-    // 한글(HWPX) 첨부가 함께 올라와 있다. PDF와 같은 내용이지만 PRD 규칙대로 표시한다.
-    hasUnreadAttachment: true,
+    // 한글(HWPX) 첨부가 함께 올라와 있지만, 같은 이름의 PDF를 읽었으므로 치지 않는다.
+    hasUnreadAttachment: false,
     body: `기획예산처는 지방정부가 운영중인 국고보조 공공시설 운영현황 실태조사 및 제도개선 방안 마련을 추진합니다. 자세한 내용은 첨부를 참고해주시기 바랍니다.
 
 보도자료
@@ -49,7 +49,7 @@ const samples: NewDocument[] = [
     title: "고유가 상황 지속에 따라 연말까지 농·어업용 면세유 유가연동보조금 791억원 추가 지원",
     publishedDate: "2026-09-29",
     department: "농림해양예산과",
-    hasUnreadAttachment: true,
+    hasUnreadAttachment: false,
     body: `정부는 9월 29일(화) 10:00 개최된 국무회의에서 올해 9월 종료 예정이었던 농·어업용 유가연동보조금 지원기간이 연말까지 연장됨에 따라 필요한 소요를 충당하기 위한 목적예비비 지출안 791억원을 의결하였습니다.
 * 자세한 내용은 첨부의 내용을 참고하여 주시기 바랍니다.
 
