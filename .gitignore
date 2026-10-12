@@ -45,3 +45,6 @@ next-env.d.ts
 
 # Claude Code 개인 설정
 /.claude/
+
+# 지우기 전에 옮겨 두는 폴더 (사용자가 확인한 뒤 직접 삭제)
+/trash-can/
