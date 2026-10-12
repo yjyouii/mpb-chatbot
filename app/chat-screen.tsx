@@ -92,6 +92,11 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: text, history }),
       });
+      // 통과 표시의 기한(7일)이 지났으면 화면을 다시 불러와 잠금 화면을 보여 준다.
+      if (res.status === 401) {
+        window.location.reload();
+        return;
+      }
       const data = (await res.json()) as ChatResponse;
       if (!res.ok || !data.answer) {
         throw new Error(data.error ?? FAILED);

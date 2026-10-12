@@ -3,6 +3,7 @@
 
 import { MAX_HISTORY_TURNS, buildSources, generateAnswer } from "@/lib/answer.ts";
 import type { Turn } from "@/lib/answer.ts";
+import { isUnlocked } from "@/lib/auth.ts";
 import { searchChunksWithContext } from "@/lib/search.ts";
 
 // 질문 하나의 최대 글자 수
@@ -37,6 +38,11 @@ function readHistory(value: unknown): Turn[] {
 }
 
 export async function POST(request: Request) {
+  // 화면뿐 아니라 이 주소도 잠금을 통과한 브라우저만 쓸 수 있다.
+  if (!(await isUnlocked())) {
+    return Response.json({ error: "잠금이 풀려 있지 않습니다." }, { status: 401 });
+  }
+
   let question: unknown;
   let history: Turn[] = [];
   try {

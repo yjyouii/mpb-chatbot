@@ -1,8 +1,8 @@
-import { connection } from "next/server";
-
+import { isUnlocked } from "@/lib/auth.ts";
 import { getCorpusStatus } from "@/lib/ingest-log.ts";
 
 import ChatScreen from "./chat-screen";
+import LockScreen from "./lock-screen";
 
 // "10월 6일"처럼 한국 시각 기준의 월·일을 만든다.
 function formatMonthDay(isoTime: string): string {
@@ -27,9 +27,12 @@ async function readCorpusLabel(): Promise<string> {
 }
 
 export default async function Home() {
-  // 문서 건수와 기준 날짜는 접속할 때마다 새로 읽는다. (빌드할 때의 값으로 굳지 않게 한다)
-  await connection();
-  const corpusLabel = await readCorpusLabel();
+  // 통과 표시(쿠키)를 읽으므로 이 화면은 접속할 때마다 새로 그려진다.
+  // 잠금을 통과하지 않은 브라우저에는 잠금 화면만 보낸다. 문서 정보도 읽지 않는다.
+  if (!(await isUnlocked())) {
+    return <LockScreen />;
+  }
 
+  const corpusLabel = await readCorpusLabel();
   return <ChatScreen corpusLabel={corpusLabel} />;
 }
