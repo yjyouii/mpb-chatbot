@@ -39,6 +39,53 @@ const ROLE_RANK_NAME = new RegExp(`(?:책임자|담당자)\\s*${RANK}\\s*${NAME}
 // 연락처를 지운 뒤 줄 끝에 홀로 남은 이름표
 const DANGLING_LABEL = /(?:책임자|담당자|작성자|연락처|이메일|전화|문의)\s*[:：]?\s*$/;
 
+// 보도자료 끝의 담당자 표는 "담당 부서"로 시작한다.
+const CONTACT_TABLE_START = /^\s*담당\s*(?:부서|부처)/;
+// 표 안에서 줄 끝에 남은 "담당자", "담당자 사무관" 같은 이름표
+const TRAILING_ROLE = new RegExp(`\\s*(?:책임자|담당자)(?:\\s*${RANK})?\\s*$`);
+// 표 안에서 "사무관 홍길동"처럼 직급과 이름만 있는 줄
+const RANK_NAME_LINE = new RegExp(`^\\s*${RANK}\\s*${NAME}\\s*$`);
+// 흔한 성씨. 표 안에서 이름만 홀로 있는 줄을 알아보는 데 쓴다.
+const SURNAMES =
+  "김이박최정강조윤장임한오서신권황안송류유전홍고문양손배백허남심노하곽성차주우구민진지엄채원천방공현함변염여추도소석선설마길연위표명반왕금옥육인맹제모탁어은편용";
+const BARE_NAME_LINE = new RegExp(`^\\s*[${SURNAMES}][가-힣]{1,2}\\s*$`);
+// "예산실", "감사관"처럼 부서 이름으로 끝나는 글자. 이런 줄은 이름으로 보지 않는다.
+const DEPARTMENT_SUFFIX = /[과팀실국단관처청]\s*$/;
+
+// 표 안의 부서·기관 이름 줄. 예: "민간투자정책과", "<총괄> 재정집행과", "기획예산처 재정성과국"
+const DEPARTMENT_LINE =
+  /^\s*(?:<[^>]{1,10}>\s*)?[가-힣A-Za-z0-9·\s]{1,28}(?:과|팀|실|국|관|단|부|처|청|원|회|센터|본부|은행)\s*$/;
+
+// 담당자 표 안에서 줄이 나뉘어 이름만 따로 떨어진 경우를 걸러 낸다.
+// 예: "담당자 사무관" 다음 줄부터 이름이 한 줄에 하나씩 이어지는 표
+function redactContactTable(lines: string[]): string[] {
+  let inTable = false;
+  return lines.map((line) => {
+    const isName = BARE_NAME_LINE.test(line) && !DEPARTMENT_SUFFIX.test(line);
+    if (CONTACT_TABLE_START.test(line)) {
+      inTable = true;
+    } else if (
+      inTable &&
+      line.trim() !== "" &&
+      !isName &&
+      !RANK_NAME_LINE.test(line) &&
+      !TRAILING_ROLE.test(line) &&
+      !DEPARTMENT_LINE.test(line)
+    ) {
+      // 표에 나올 만한 줄(부서 이름, 이름표, 이름)이 아니면 표가 끝난 것으로 본다.
+      // 표 밖의 "제조", "서울" 같은 짧은 낱말을 이름으로 잘못 지우지 않기 위해서다.
+      inTable = false;
+    }
+    if (!inTable) {
+      return line;
+    }
+    if (RANK_NAME_LINE.test(line) || isName) {
+      return "";
+    }
+    return line.replace(TRAILING_ROLE, "");
+  });
+}
+
 export type RedactResult = {
   text: string;
   // 걸러 낸 전화번호·이메일의 수
@@ -67,10 +114,13 @@ export function redactPersonalInfo(text: string): RedactResult {
     // 3) 연락처 없이 역할·직급·이름만 이어진 부분을 지운다.
     cleaned = cleaned.replace(ROLE_RANK_NAME, "");
     // 4) 남은 연락처 표시와 빈 괄호를 지운다.
-    cleaned = cleaned.replaceAll(CONTACT_MARK, "").replace(/[(（]\s*[)）]/g, "");
     // 5) 연락처가 있던 줄 끝에 홀로 남은 이름표를 지운다.
     if (hadContact) {
-      cleaned = cleaned.trimEnd().replace(DANGLING_LABEL, "");
+      cleaned = cleaned
+        .replaceAll(CONTACT_MARK, "")
+        .replace(/[(（]\s*[)）]/g, "")
+        .trimEnd()
+        .replace(DANGLING_LABEL, "");
     }
 
     // 6) 이름표만 홀로 있는 줄은 연락처 표의 일부이므로 지운다.
@@ -82,6 +132,9 @@ export function redactPersonalInfo(text: string): RedactResult {
   });
 
   // 걸러 낸 뒤 비어 버린 줄이 여러 개 이어지면 하나로 줄인다.
-  const result = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const result = redactContactTable(lines)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
   return { text: result, removedContacts };
 }

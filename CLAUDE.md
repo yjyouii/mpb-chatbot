@@ -20,6 +20,7 @@ npm run lint    # ESLint
 npm run db:check     # 문서 저장소의 표 4개와 줄 수 확인
 npm run db:selftest  # 저장 기능 점검 (시험용 글을 넣었다가 바로 지움)
 npm run db:samples   # 시험용 보도자료 넣기 (지우기: -- --remove)
+npm run db:reredact  # 거르는 규칙을 고친 뒤 저장된 문서에 다시 적용 (미리 보기: -- --dry-run)
 npm run ingest       # 자료 가져오기 (일부만: -- --limit 20, 주소만 보기: -- --list-only). 실제 홈페이지에 접속한다
 ```
 

@@ -10,7 +10,8 @@
     "db:check": "node --env-file=.env scripts/check-db.mjs",
     "db:selftest": "node --env-file=.env scripts/selftest-save.ts",
     "db:samples": "node --env-file=.env scripts/sample-docs.ts",
-    "ingest": "node --env-file=.env scripts/ingest.ts"
+    "ingest": "node --env-file=.env scripts/ingest.ts",
+    "db:reredact": "node --env-file=.env scripts/reredact.ts"
   },
   "dependencies": {
     "cheerio": "^1.2.0",

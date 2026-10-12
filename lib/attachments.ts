@@ -44,6 +44,8 @@ async function readPdfText(data: Uint8Array): Promise<string> {
   return text
     .map((page) =>
       page
+        // 저장소가 받지 못하는 보이지 않는 제어 문자를 지운다.
+        .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
         .split("\n")
         .map((line) => line.trim())
         .filter((line) => line && !/^-\s*\d+\s*-$/.test(line))
