@@ -56,9 +56,19 @@ export async function politeFetch(
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
-    throw new Error(`홈페이지 요청 실패 (HTTP ${res.status}): ${url}`);
+    throw new HttpError(res.status, url);
   }
   return res;
+}
+
+// 홈페이지가 "없는 주소"처럼 오류 번호로 답한 경우. 접속이 끊긴 것과 구분하는 데 쓴다.
+export class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, url: string) {
+    super(`홈페이지 요청 실패 (HTTP ${status}): ${url}`);
+    this.status = status;
+  }
 }
 
 export type Attachment = {

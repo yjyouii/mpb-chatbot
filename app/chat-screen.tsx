@@ -86,6 +86,8 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
         ),
       );
 
+    // 오류가 났을 때 말풍선에 보여 줄 문구
+    let failureText = FAILED;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -99,7 +101,9 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
       }
       const data = (await res.json()) as ChatResponse;
       if (!res.ok || !data.answer) {
-        throw new Error(data.error ?? FAILED);
+        // 서버가 한국어 안내 문구를 보냈으면 그것을, 아니면 정해 둔 문구를 보여 준다.
+        failureText = data.error ?? FAILED;
+        throw new Error(failureText);
       }
       const answerMessage: Message = {
         id: answerId,
@@ -112,8 +116,9 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
       replaceAnswer(answerMessage.text, { ...answerMessage, unfinished: false });
       // 끝까지 주고받은 질문과 답을 브라우저에 저장한다.
       saveConversation(id, [...messages, userMessage, answerMessage]);
-    } catch (error) {
-      replaceAnswer(error instanceof Error && error.message ? error.message : FAILED);
+    } catch {
+      // 인터넷이 끊겼을 때 브라우저가 내는 영어 오류 글자는 화면에 보여 주지 않는다.
+      replaceAnswer(failureText);
       // 오류가 나면 입력한 질문을 지우지 않고 입력 칸에 되돌려 놓는다.
       setQuestion((current) => current || text);
     } finally {

@@ -3,7 +3,7 @@
 
 import { extractText, getDocumentProxy } from "unpdf";
 
-import { politeFetch } from "./board.ts";
+import { HttpError, politeFetch } from "./board.ts";
 import type { Attachment } from "./board.ts";
 
 // 첨부파일 하나를 내려받을 때 기다리는 최대 시간
@@ -55,6 +55,19 @@ async function readPdfText(data: Uint8Array): Promise<string> {
     .join("\n\n");
 }
 
+// 다시 시도해도 결과가 같을 내려받기 오류인지 본다.
+// 홈페이지가 "없는 파일"(404 등)이라고 답한 경우가 그렇다.
+// 요청이 너무 많다는 답(429)과 시간 초과(408), 서버 쪽 오류(500번대)는 잠깐의 문제로 본다.
+function isPermanentDownloadError(error: unknown): boolean {
+  return (
+    error instanceof HttpError &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 408 &&
+    error.status !== 429
+  );
+}
+
 export async function readAttachments(
   attachments: Attachment[],
 ): Promise<AttachmentResult> {
@@ -74,9 +87,25 @@ export async function readAttachments(
       unreadNames.push(attachment.name);
       continue;
     }
+    // 1) 내려받기. 접속이 끊기거나 시간이 초과된 것은 잠깐의 문제일 수 있으므로
+    //    글 전체를 실패로 돌려, 다음 실행 때 다시 가져오게 한다.
+    //    "읽지 못한 첨부"로 저장해 버리면 그 글은 요약만 남고 다시 시도되지 않는다.
+    let data: Uint8Array;
     try {
       const res = await politeFetch(attachment.url, DOWNLOAD_TIMEOUT_MS);
-      const data = new Uint8Array(await res.arrayBuffer());
+      data = new Uint8Array(await res.arrayBuffer());
+    } catch (error) {
+      if (isPermanentDownloadError(error)) {
+        // 홈페이지에 파일이 없는 경우다. 다시 해도 같으므로 표시만 남긴다.
+        unreadNames.push(attachment.name);
+        continue;
+      }
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`첨부파일을 내려받지 못했습니다 (${attachment.name}): ${reason}`);
+    }
+
+    // 2) 글자 뽑기. 여기서 못 읽는 것은 다시 해도 같으므로 표시만 남긴다.
+    try {
       if (data.byteLength > MAX_PDF_BYTES) {
         throw new Error("파일이 너무 큽니다.");
       }
@@ -87,7 +116,7 @@ export async function readAttachments(
       texts.push(text);
       readNames.push(attachment.name);
     } catch {
-      // 첨부 하나를 못 읽어도 글 전체를 실패로 보지 않는다. 표시만 남긴다.
+      // 너무 크거나 스캔한 그림이라 읽을 수 없는 PDF다. 글 전체를 실패로 보지 않는다.
       unreadNames.push(attachment.name);
     }
   }
