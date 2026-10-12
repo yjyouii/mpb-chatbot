@@ -1,27 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 
-// 답변 아래에 보여 주는 출처 하나. 서버가 문서 저장소에서 꺼내 준 값이다.
-type Source = {
-  title: string;
-  publishedDate: string;
-  url: string;
-  hasUnreadAttachment: boolean;
-};
-
-type Message = {
-  id: number;
-  role: "user" | "assistant";
-  text: string;
-  // 답변의 종류. 서버가 알려 준 값이다. (answer, not_found, clarify, smalltalk)
-  kind?: string;
-  sources?: Source[];
-  hasMoreSources?: boolean;
-  // 답변을 기다리는 중이거나 오류로 끝난 말풍선. 직전 대화로 보내지 않는다.
-  unfinished?: boolean;
-};
+import {
+  clearConversations,
+  getConversations,
+  getServerConversations,
+  saveConversation,
+  subscribe,
+} from "./conversation-store";
+import type { Conversation, Message, Source } from "./conversation-store";
 
 // 이어지는 질문을 이해하도록 함께 보내는 직전 질문·답의 최대 쌍 수 (PRD 5장)
 const MAX_HISTORY_TURNS = 3;
@@ -53,6 +42,10 @@ const SEARCHING = "자료에서 찾는 중입니다…";
 const FAILED = "답변을 가져오지 못했습니다. 잠시 뒤 다시 시도해 주세요";
 
 export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
+  // 브라우저에 저장된 지난 대화 목록. 저장된 내용이 바뀌면 자동으로 다시 그려진다.
+  const conversations = useSyncExternalStore(subscribe, getConversations, getServerConversations);
+  // 지금 열려 있는 대화의 번호. 새 대화이고 아직 질문을 보내지 않았으면 null
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
   // 답변을 기다리는 동안에는 새 질문을 보내지 못하게 한다.
@@ -71,10 +64,14 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
       return;
     }
     const history = collectHistory(messages);
+    // 새 대화의 첫 질문이면 이 대화에 번호를 붙인다.
+    const id = conversationId ?? crypto.randomUUID();
+    setConversationId(id);
+    const userMessage: Message = { id: nextId.current, role: "user", text };
     const answerId = nextId.current + 1;
     setMessages((previous) => [
       ...previous,
-      { id: nextId.current, role: "user", text },
+      userMessage,
       { id: answerId, role: "assistant", text: SEARCHING, unfinished: true },
     ]);
     nextId.current += 2;
@@ -99,12 +96,17 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
       if (!res.ok || !data.answer) {
         throw new Error(data.error ?? FAILED);
       }
-      replaceAnswer(data.answer, {
+      const answerMessage: Message = {
+        id: answerId,
+        role: "assistant",
+        text: data.answer,
         kind: data.kind,
         sources: data.sources ?? [],
         hasMoreSources: data.hasMoreSources ?? false,
-        unfinished: false,
-      });
+      };
+      replaceAnswer(answerMessage.text, { ...answerMessage, unfinished: false });
+      // 끝까지 주고받은 질문과 답을 브라우저에 저장한다.
+      saveConversation(id, [...messages, userMessage, answerMessage]);
     } catch (error) {
       replaceAnswer(error instanceof Error && error.message ? error.message : FAILED);
       // 오류가 나면 입력한 질문을 지우지 않고 입력 칸에 되돌려 놓는다.
@@ -112,6 +114,29 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
     } finally {
       setWaiting(false);
     }
+  }
+
+  // 지난 대화를 다시 연다.
+  function openConversation(conversation: Conversation) {
+    setConversationId(conversation.id);
+    setMessages(conversation.messages);
+    nextId.current = Math.max(-1, ...conversation.messages.map((message) => message.id)) + 1;
+    setQuestion("");
+  }
+
+  function startNewConversation() {
+    setConversationId(null);
+    setMessages([]);
+    nextId.current = 0;
+    setQuestion("");
+  }
+
+  function deleteAllConversations() {
+    if (!window.confirm("저장된 대화 기록을 모두 지울까요? 지우면 되돌릴 수 없습니다.")) {
+      return;
+    }
+    clearConversations();
+    startNewConversation();
   }
 
   function handleSubmit(event: FormEvent) {
@@ -137,10 +162,50 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* ② 왼쪽 줄: 지난 대화 (목록·새 대화·전체 삭제는 PLAN 작업 23~24에서 채운다) */}
+        {/* ② 왼쪽 줄: 새 대화, 지난 대화 목록, 전체 삭제 */}
         <aside className="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-zinc-700">지난 대화</h2>
-          <p className="mt-3 text-sm text-zinc-400">아직 저장된 대화가 없습니다.</p>
+          <button
+            type="button"
+            onClick={startNewConversation}
+            disabled={waiting}
+            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium hover:bg-zinc-100 disabled:text-zinc-400"
+          >
+            + 새 대화
+          </button>
+
+          <h2 className="mt-5 text-sm font-semibold text-zinc-700">지난 대화</h2>
+          {conversations.length === 0 ? (
+            <p className="mt-3 text-sm text-zinc-400">아직 저장된 대화가 없습니다.</p>
+          ) : (
+            <ul className="mt-2 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+              {conversations.map((conversation) => (
+                <li key={conversation.id}>
+                  <button
+                    type="button"
+                    onClick={() => openConversation(conversation)}
+                    disabled={waiting}
+                    aria-current={conversation.id === conversationId ? "true" : undefined}
+                    className={
+                      conversation.id === conversationId
+                        ? "w-full truncate rounded-lg bg-zinc-200 px-3 py-2 text-left text-sm font-medium"
+                        : "w-full truncate rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100"
+                    }
+                  >
+                    {conversation.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <button
+            type="button"
+            onClick={deleteAllConversations}
+            disabled={waiting || conversations.length === 0}
+            className="mt-auto rounded-lg px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 disabled:text-zinc-400 disabled:hover:bg-transparent"
+          >
+            전체 삭제
+          </button>
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
