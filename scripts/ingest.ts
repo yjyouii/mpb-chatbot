@@ -14,12 +14,10 @@ import { collectLatestPosts, fetchPost } from "../lib/board.ts";
 import type { Post } from "../lib/board.ts";
 import { NOT_STATED, documentExists, saveDocument } from "../lib/documents.ts";
 import type { NewDocument } from "../lib/documents.ts";
+import { redactPersonalInfo } from "../lib/redact.ts";
 
 // 한 번 실행할 때 훑어보는 최신 글의 수
 const DEFAULT_LIMIT = 150;
-// 임시 안전장치: 아직 담당자 실명·전화번호를 거르지 않으므로, 그 전에는 이 건수까지만 가져온다.
-// 개인정보 거르기(PLAN 작업 12)가 끝나면 이 제한을 없앤다.
-const TRIAL_LIMIT = 20;
 
 // "--이름 값" 꼴로 적은 값을 읽는다. 없으면 null
 function readOption(name: string): string | null {
@@ -39,21 +37,27 @@ function readLimit(): number {
   return value;
 }
 
-// 읽은 글에 PDF 첨부의 글자를 덧붙여 저장할 문서를 만든다.
-async function buildDocument(
-  post: Post,
-): Promise<{ document: NewDocument; attachments: AttachmentResult }> {
+// 읽은 글에 PDF 첨부의 글자를 덧붙이고, 담당자 실명·전화번호·이메일을 걸러 저장할 문서를 만든다.
+async function buildDocument(post: Post): Promise<{
+  document: NewDocument;
+  attachments: AttachmentResult;
+  removedContacts: number;
+}> {
   const attachments = await readAttachments(post.attachments);
+  const redacted = redactPersonalInfo(
+    [post.body, attachments.text].filter(Boolean).join("\n\n"),
+  );
   return {
     document: {
       url: post.url,
       title: post.title,
       publishedDate: post.publishedDate,
       department: post.department,
-      body: [post.body, attachments.text].filter(Boolean).join("\n\n"),
+      body: redacted.text,
       hasUnreadAttachment: attachments.unreadNames.length > 0,
     },
     attachments,
+    removedContacts: redacted.removedContacts,
   };
 }
 
@@ -71,7 +75,7 @@ async function ingestOne(href: string, dryRun: boolean) {
   }
   console.log(`게시글 본문 (${post.body.length}글자):\n${post.body}\n`);
 
-  const { document, attachments } = await buildDocument(post);
+  const { document, attachments, removedContacts } = await buildDocument(post);
   console.log(`읽은 PDF ${attachments.readNames.length}개 (${attachments.text.length}글자)`);
   for (const name of attachments.readNames) {
     console.log(`  - ${name}`);
@@ -84,7 +88,10 @@ async function ingestOne(href: string, dryRun: boolean) {
   if (attachments.text) {
     console.log(`\nPDF에서 읽은 글자 (앞 600글자):\n${attachments.text.slice(0, 600)}\n…`);
   }
-  console.log(`\n저장할 본문 전체 ${document.body.length}글자\n`);
+  console.log(`\n걸러 낸 전화번호·이메일 ${removedContacts}개`);
+  console.log(
+    `저장할 본문 전체 ${document.body.length}글자. 끝부분:\n…${document.body.slice(-300)}\n`,
+  );
 
   if (dryRun) {
     console.log("읽기만 했습니다. 저장하지 않았습니다. (--dry-run)");
@@ -172,13 +179,7 @@ try {
   } else if (process.argv.includes("--list-only")) {
     await listLatest(readLimit());
   } else {
-    const limit = readLimit();
-    if (limit > TRIAL_LIMIT) {
-      throw new Error(
-        `개인정보 거르기(PLAN 작업 12)가 끝나기 전에는 ${TRIAL_LIMIT}건까지만 시험할 수 있습니다. 예: npm run ingest -- --limit ${TRIAL_LIMIT}`,
-      );
-    }
-    await ingestLatest(limit);
+    await ingestLatest(readLimit());
   }
 } catch (error) {
   // 긴 오류 기록 대신 무엇이 문제인지 한 줄로 보여 준다.

@@ -30,6 +30,8 @@ function extensionOf(name: string): string {
 function baseNameOf(name: string): string {
   return name
     .replace(/\.[a-z0-9]+\s*$/i, "")
+    // 같은 파일을 다시 올려 이름 끝에 붙은 " (1)" 같은 번호는 뗀다.
+    .replace(/\s*\(\d+\)\s*$/, "")
     .normalize("NFC")
     .replace(/\s+/g, " ")
     .trim();
