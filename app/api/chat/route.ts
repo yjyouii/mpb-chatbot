@@ -17,7 +17,7 @@ function readHistory(value: unknown): Turn[] {
   }
   const turns: Turn[] = [];
   for (const item of value) {
-    const turn = item as { question?: unknown; answer?: unknown } | null;
+    const turn = item as { question?: unknown; answer?: unknown; kind?: unknown } | null;
     if (
       turn &&
       typeof turn.question === "string" &&
@@ -28,6 +28,8 @@ function readHistory(value: unknown): Turn[] {
       turns.push({
         question: turn.question.trim().slice(0, MAX_QUESTION_LENGTH),
         answer: turn.answer.trim().slice(0, MAX_HISTORY_ANSWER_LENGTH),
+        // 직전 답이 되묻기였는지만 쓰므로, 그 밖의 값은 받지 않는다.
+        kind: turn.kind === "clarify" ? "clarify" : undefined,
       });
     }
   }

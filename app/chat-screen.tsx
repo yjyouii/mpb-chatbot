@@ -15,6 +15,8 @@ type Message = {
   id: number;
   role: "user" | "assistant";
   text: string;
+  // 답변의 종류. 서버가 알려 준 값이다. (answer, not_found, clarify, smalltalk)
+  kind?: string;
   sources?: Source[];
   hasMoreSources?: boolean;
   // 답변을 기다리는 중이거나 오류로 끝난 말풍선. 직전 대화로 보내지 않는다.
@@ -24,20 +26,23 @@ type Message = {
 // 이어지는 질문을 이해하도록 함께 보내는 직전 질문·답의 최대 쌍 수 (PRD 5장)
 const MAX_HISTORY_TURNS = 3;
 
+type HistoryTurn = { question: string; answer: string; kind?: string };
+
 // 지금까지의 말풍선에서 끝까지 주고받은 질문·답 쌍을 골라 마지막 3쌍을 돌려준다.
-function collectHistory(messages: Message[]): { question: string; answer: string }[] {
-  const turns: { question: string; answer: string }[] = [];
+function collectHistory(messages: Message[]): HistoryTurn[] {
+  const turns: HistoryTurn[] = [];
   for (let index = 0; index + 1 < messages.length; index++) {
     const question = messages[index];
     const answer = messages[index + 1];
     if (question.role === "user" && answer.role === "assistant" && !answer.unfinished) {
-      turns.push({ question: question.text, answer: answer.text });
+      turns.push({ question: question.text, answer: answer.text, kind: answer.kind });
     }
   }
   return turns.slice(-MAX_HISTORY_TURNS);
 }
 
 type ChatResponse = {
+  kind?: string;
   answer?: string;
   sources?: Source[];
   hasMoreSources?: boolean;
@@ -95,6 +100,7 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
         throw new Error(data.error ?? FAILED);
       }
       replaceAnswer(data.answer, {
+        kind: data.kind,
         sources: data.sources ?? [],
         hasMoreSources: data.hasMoreSources ?? false,
         unfinished: false,

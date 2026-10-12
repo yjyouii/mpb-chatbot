@@ -19,7 +19,13 @@ export type AnswerKind = "answer" | "not_found" | "clarify" | "smalltalk";
 export type Turn = {
   question: string;
   answer: string;
+  // 그 답의 종류. 직전 답이 되묻기였는지 아는 데 쓴다.
+  kind?: AnswerKind;
 };
+
+// 기본 답변 길이와, 사용자가 "자세히"라고 요청했을 때의 길이 (PRD 5장)
+const DEFAULT_SENTENCES = 5;
+const DETAILED_SENTENCES = 10;
 
 // 함께 보내는 직전 대화의 최대 쌍 수 (PRD 5장)
 export const MAX_HISTORY_TURNS = 3;
@@ -58,20 +64,57 @@ const INSTRUCTIONS = `너는 기관 공식 홈페이지의 보도자료를 근�
 - 담당 부서가 "표기 없음"이면 "담당 부서 표기 없음"이라고 답한다. 부서를 짐작해 적지 않는다.
 
 [형식]
-- 한국어로, 핵심부터 5문장 이내로 답한다.
+- 한국어로 답한다.
 - 별표(**) 같은 꾸밈 기호를 쓰지 않는다. "문서 12" 같은 문서 번호를 text에 적지 않는다.`;
 
+// 사용자가 "자세히"라고 요청했는지 본다.
+export function wantsDetail(question: string): boolean {
+  return question.includes("자세히");
+}
+
+// 질문과 직전 대화에 따라 달라지는 규칙을 덧붙인 지시문을 만든다.
+function buildInstructions(detailed: boolean, allowClarify: boolean): string {
+  const limit = detailed ? DETAILED_SENTENCES : DEFAULT_SENTENCES;
+  const rules = [
+    "[길이]",
+    `- 핵심부터 ${limit}문장 이내로 답한다. 문장 수를 세어 ${limit}문장을 넘기지 않는다.`,
+    "- 여러 문서를 종합하거나 항목을 나열할 때도 마찬가지다. 넘칠 것 같으면 덜 중요한 내용을 뺀다.",
+  ];
+  if (detailed) {
+    rules.push(
+      `- 사용자가 "자세히"라고 요청했으므로 ${DEFAULT_SENTENCES}문장보다 길게, 배경과 세부 수치를 포함해 답해도 된다.`,
+    );
+  }
+  if (!allowClarify) {
+    rules.push(
+      "",
+      "[되묻기 금지]",
+      '- 직전 답에서 이미 한 번 되물었다. 이번에는 "clarify"를 고르지 않는다.',
+      '- 직전 대화와 이번 말을 합쳐 [문서]에서 답할 수 있으면 "answer"로 답하고, 그래도 답할 수 없으면 "not_found"를 고른다.',
+    );
+  }
+  return `${INSTRUCTIONS}\n\n${rules.join("\n")}`;
+}
+
 // AI가 돌려줄 답의 모양. 이 모양을 벗어난 답은 나오지 않는다.
-const ANSWER_SCHEMA = {
-  type: "object",
-  properties: {
-    kind: { type: "string", enum: ["answer", "not_found", "clarify", "smalltalk"] },
-    text: { type: "string" },
-    document_ids: { type: "array", items: { type: "integer" } },
-  },
-  required: ["kind", "text", "document_ids"],
-  additionalProperties: false,
-};
+// 되묻기를 이미 한 번 했으면 고를 수 있는 종류에서 "clarify"를 아예 뺀다.
+function buildSchema(allowClarify: boolean) {
+  return {
+    type: "object",
+    properties: {
+      kind: {
+        type: "string",
+        enum: allowClarify
+          ? ["answer", "not_found", "clarify", "smalltalk"]
+          : ["answer", "not_found", "smalltalk"],
+      },
+      text: { type: "string" },
+      document_ids: { type: "array", items: { type: "integer" } },
+    },
+    required: ["kind", "text", "document_ids"],
+    additionalProperties: false,
+  };
+}
 
 type ResponsesApiResult = {
   output?: {
@@ -109,8 +152,13 @@ export function formatContext(chunks: MatchedChunk[]): string {
 }
 
 // AI가 돌려준 답을 서버가 한 번 더 확인한다. 규칙을 어긴 답이 화면으로 나가지 않게 한다.
-export function validateAnswer(raw: RawAnswer, chunks: MatchedChunk[]): Answer {
-  if (raw.kind === "not_found") {
+export function validateAnswer(
+  raw: RawAnswer,
+  chunks: MatchedChunk[],
+  allowClarify: boolean = true,
+): Answer {
+  // 되묻기는 1번만 한다. 이미 되물었는데 또 되물으면 "찾지 못함"으로 처리한다.
+  if (raw.kind === "not_found" || (raw.kind === "clarify" && !allowClarify)) {
     return { kind: "not_found", text: NOT_FOUND_TEXT, documentIds: [] };
   }
   if (raw.kind === "clarify" || raw.kind === "smalltalk") {
@@ -142,6 +190,9 @@ export async function generateAnswer(
     throw new Error(".env에 OPENAI_API_KEY가 없습니다.");
   }
 
+  // 되묻기는 1번만 한다. 직전 답이 되묻기였으면 이번에는 되묻지 못하게 한다.
+  const allowClarify = history.at(-1)?.kind !== "clarify";
+
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -151,7 +202,7 @@ export async function generateAnswer(
     body: JSON.stringify({
       model: ANSWER_MODEL,
       reasoning: { effort: "low" },
-      instructions: INSTRUCTIONS,
+      instructions: buildInstructions(wantsDetail(question), allowClarify),
       input: [
         // 직전 질문과 답을 오래된 것부터 차례로 넣는다.
         ...history.flatMap((turn) => [
@@ -164,7 +215,7 @@ export async function generateAnswer(
         },
       ],
       text: {
-        format: { type: "json_schema", name: "answer", schema: ANSWER_SCHEMA, strict: true },
+        format: { type: "json_schema", name: "answer", schema: buildSchema(allowClarify), strict: true },
       },
     }),
     signal: AbortSignal.timeout(ANSWER_TIMEOUT_MS),
@@ -185,7 +236,7 @@ export async function generateAnswer(
   if (!json) {
     throw new Error("AI가 답변을 돌려주지 않았습니다.");
   }
-  return validateAnswer(JSON.parse(json) as RawAnswer, chunks);
+  return validateAnswer(JSON.parse(json) as RawAnswer, chunks, allowClarify);
 }
 
 // 답변 아래에 보여 줄 출처 하나
