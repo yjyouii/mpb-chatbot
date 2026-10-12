@@ -7,7 +7,7 @@
 
 ## 현재 상태
 
-- `create-next-app` 직후의 빈 프로젝트다. `app/page.tsx`, `app/layout.tsx`는 아직 기본 템플릿 그대로다.
+- 어디까지 만들었는지는 `git log`와 [PLAN.md](PLAN.md)의 작업 번호로 확인한다.
 - 개발은 [PLAN.md](PLAN.md)의 작업 1~26번 순서대로 진행한다. 한 번에 한 작업씩 만들고, 끝나면 무엇이 됐는지 확인받은 뒤 다음으로 넘어간다.
 - 화면 구성, 데이터 흐름, 기술 선택은 [DESIGN.md](DESIGN.md)를 따른다.
 
@@ -19,6 +19,8 @@ npm run build   # 배포용 빌드 — 타입 오류도 여기서 잡힌다
 npm run lint    # ESLint
 npm run db:check     # 문서 저장소의 표 4개와 줄 수 확인
 npm run db:selftest  # 저장 기능 점검 (시험용 글을 넣었다가 바로 지움)
+npm run db:samples   # 시험용 보도자료 넣기 (지우기: -- --remove)
+npm run ingest       # 자료 가져오기 (일부만: -- --limit 20). 실제 홈페이지에 접속한다
 ```
 
 - 테스트 도구는 아직 없다. 코드를 고친 뒤에는 `npm run lint`와 `npm run build`로 확인한다.
