@@ -3,7 +3,7 @@
 - 근거 문서: [PRD.md](PRD.md) · [PLAN.md](PLAN.md) · [DESIGN.md](DESIGN.md)
 - 점검일: 2026-10-12
 - PDCA 단계: Check (기능 이름 `mpb-chatbot`)
-- 점검 대상: `feature/security-hardening` 브랜치의 커밋 `2162340` (아직 `main`에 합치지 않음)
+- 점검 대상: 보안 보강까지 들어간 커밋 `2162340` (2026-10-12 `main`에 병합)
 
 ## 판정: 통과 (조건 있음)
 
