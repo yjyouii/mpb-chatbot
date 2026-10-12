@@ -1,12 +1,35 @@
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <h1 className="text-5xl font-bold tracking-tight text-black dark:text-zinc-50">
-        mpb챗봇
-      </h1>
-      <p className="mt-6 text-lg text-zinc-600 dark:text-zinc-400">
-        보도자료 내용을 문장으로 물어보세요.
-      </p>
-    </div>
-  );
+import { connection } from "next/server";
+
+import { getCorpusStatus } from "@/lib/ingest-log.ts";
+
+import ChatScreen from "./chat-screen";
+
+// "10월 6일"처럼 한국 시각 기준의 월·일을 만든다.
+function formatMonthDay(isoTime: string): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "long",
+    day: "numeric",
+  }).format(new Date(isoTime));
+}
+
+// 화면 위쪽에 보여 줄 "문서 N건 · ○월 ○일까지 가져온 자료 기준" 문구를 만든다.
+async function readCorpusLabel(): Promise<string> {
+  try {
+    const status = await getCorpusStatus();
+    if (!status.lastRunAt) {
+      return `문서 ${status.documentCount}건 · 아직 가져온 자료가 없습니다`;
+    }
+    return `문서 ${status.documentCount}건 · ${formatMonthDay(status.lastRunAt)}까지 가져온 자료 기준`;
+  } catch {
+    return "문서 정보를 읽지 못했습니다";
+  }
+}
+
+export default async function Home() {
+  // 문서 건수와 기준 날짜는 접속할 때마다 새로 읽는다. (빌드할 때의 값으로 굳지 않게 한다)
+  await connection();
+  const corpusLabel = await readCorpusLabel();
+
+  return <ChatScreen corpusLabel={corpusLabel} />;
 }
