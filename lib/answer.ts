@@ -15,6 +15,15 @@ export const NOT_FOUND_TEXT = "자료에서 찾지 못했습니다";
 // 답변 종류는 4가지로 고정한다.
 export type AnswerKind = "answer" | "not_found" | "clarify" | "smalltalk";
 
+// 직전에 주고받은 질문과 답 한 쌍. 이어지는 질문을 이해하는 데 쓴다.
+export type Turn = {
+  question: string;
+  answer: string;
+};
+
+// 함께 보내는 직전 대화의 최대 쌍 수 (PRD 5장)
+export const MAX_HISTORY_TURNS = 3;
+
 export type Answer = {
   kind: AnswerKind;
   text: string;
@@ -23,7 +32,9 @@ export type Answer = {
 };
 
 const INSTRUCTIONS = `너는 기관 공식 홈페이지의 보도자료를 근거로 실무자의 질문에 답하는 도우미다.
-사용자 메시지에는 검색으로 찾은 [문서]들과 질문이 들어 있다. 아래 규칙을 반드시 지킨다.
+마지막 사용자 메시지에는 검색으로 찾은 [문서]들과 질문이 들어 있다. 아래 규칙을 반드시 지킨다.
+그 앞에 직전 대화가 있으면, "그건", "그 사업"처럼 앞의 내용을 가리키는 말을 이해하는 데에만 쓴다.
+직전 대화의 답변은 근거가 아니다. 이번 답도 반드시 마지막 메시지의 [문서]에서 근거를 찾는다.
 
 [근거]
 - [문서]에 적힌 내용만 근거로 답한다. 네가 원래 알고 있는 일반 지식이나 추측을 보태지 않는다.
@@ -121,7 +132,11 @@ export function validateAnswer(raw: RawAnswer, chunks: MatchedChunk[]): Answer {
   return { kind: "answer", text, documentIds };
 }
 
-export async function generateAnswer(question: string, chunks: MatchedChunk[]): Promise<Answer> {
+export async function generateAnswer(
+  question: string,
+  chunks: MatchedChunk[],
+  history: Turn[] = [],
+): Promise<Answer> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error(".env에 OPENAI_API_KEY가 없습니다.");
@@ -138,6 +153,11 @@ export async function generateAnswer(question: string, chunks: MatchedChunk[]): 
       reasoning: { effort: "low" },
       instructions: INSTRUCTIONS,
       input: [
+        // 직전 질문과 답을 오래된 것부터 차례로 넣는다.
+        ...history.flatMap((turn) => [
+          { role: "user", content: `질문: ${turn.question}` },
+          { role: "assistant", content: turn.answer },
+        ]),
         {
           role: "user",
           content: `${formatContext(chunks)}\n\n===\n\n질문: ${question}`,

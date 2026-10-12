@@ -17,7 +17,25 @@ type Message = {
   text: string;
   sources?: Source[];
   hasMoreSources?: boolean;
+  // 답변을 기다리는 중이거나 오류로 끝난 말풍선. 직전 대화로 보내지 않는다.
+  unfinished?: boolean;
 };
+
+// 이어지는 질문을 이해하도록 함께 보내는 직전 질문·답의 최대 쌍 수 (PRD 5장)
+const MAX_HISTORY_TURNS = 3;
+
+// 지금까지의 말풍선에서 끝까지 주고받은 질문·답 쌍을 골라 마지막 3쌍을 돌려준다.
+function collectHistory(messages: Message[]): { question: string; answer: string }[] {
+  const turns: { question: string; answer: string }[] = [];
+  for (let index = 0; index + 1 < messages.length; index++) {
+    const question = messages[index];
+    const answer = messages[index + 1];
+    if (question.role === "user" && answer.role === "assistant" && !answer.unfinished) {
+      turns.push({ question: question.text, answer: answer.text });
+    }
+  }
+  return turns.slice(-MAX_HISTORY_TURNS);
+}
 
 type ChatResponse = {
   answer?: string;
@@ -47,11 +65,12 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
     if (!text || waiting) {
       return;
     }
+    const history = collectHistory(messages);
     const answerId = nextId.current + 1;
     setMessages((previous) => [
       ...previous,
       { id: nextId.current, role: "user", text },
-      { id: answerId, role: "assistant", text: SEARCHING },
+      { id: answerId, role: "assistant", text: SEARCHING, unfinished: true },
     ]);
     nextId.current += 2;
     setQuestion("");
@@ -69,7 +88,7 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: text }),
+        body: JSON.stringify({ question: text, history }),
       });
       const data = (await res.json()) as ChatResponse;
       if (!res.ok || !data.answer) {
@@ -78,6 +97,7 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
       replaceAnswer(data.answer, {
         sources: data.sources ?? [],
         hasMoreSources: data.hasMoreSources ?? false,
+        unfinished: false,
       });
     } catch (error) {
       replaceAnswer(error instanceof Error && error.message ? error.message : FAILED);

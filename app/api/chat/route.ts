@@ -1,16 +1,46 @@
 // 질문을 받아 답변을 돌려주는 서버 쪽 코드 (DESIGN.md 2.2)
 // 브라우저는 AI나 문서 저장소에 직접 접속하지 않고 이 주소로만 질문을 보낸다.
 
-import { buildSources, generateAnswer } from "@/lib/answer.ts";
-import { searchChunks } from "@/lib/search.ts";
+import { MAX_HISTORY_TURNS, buildSources, generateAnswer } from "@/lib/answer.ts";
+import type { Turn } from "@/lib/answer.ts";
+import { searchChunksWithContext } from "@/lib/search.ts";
 
 // 질문 하나의 최대 글자 수
 const MAX_QUESTION_LENGTH = 1000;
+// 직전 답 하나에서 AI에 다시 보내는 최대 글자 수
+const MAX_HISTORY_ANSWER_LENGTH = 2000;
+
+// 브라우저가 보낸 직전 대화에서 모양이 맞는 것만 골라, 마지막 3쌍까지만 남긴다.
+function readHistory(value: unknown): Turn[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const turns: Turn[] = [];
+  for (const item of value) {
+    const turn = item as { question?: unknown; answer?: unknown } | null;
+    if (
+      turn &&
+      typeof turn.question === "string" &&
+      typeof turn.answer === "string" &&
+      turn.question.trim() &&
+      turn.answer.trim()
+    ) {
+      turns.push({
+        question: turn.question.trim().slice(0, MAX_QUESTION_LENGTH),
+        answer: turn.answer.trim().slice(0, MAX_HISTORY_ANSWER_LENGTH),
+      });
+    }
+  }
+  return turns.slice(-MAX_HISTORY_TURNS);
+}
 
 export async function POST(request: Request) {
   let question: unknown;
+  let history: Turn[] = [];
   try {
-    question = ((await request.json()) as { question?: unknown }).question;
+    const body = (await request.json()) as { question?: unknown; history?: unknown };
+    question = body.question;
+    history = readHistory(body.history);
   } catch {
     return Response.json({ error: "요청 형식이 올바르지 않습니다." }, { status: 400 });
   }
@@ -25,8 +55,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const chunks = await searchChunks(question.trim());
-    const answer = await generateAnswer(question.trim(), chunks);
+    const chunks = await searchChunksWithContext(question.trim(), history.at(-1));
+    const answer = await generateAnswer(question.trim(), chunks, history);
     const { sources, hasMoreSources } = buildSources(answer, chunks);
     return Response.json({
       kind: answer.kind,
