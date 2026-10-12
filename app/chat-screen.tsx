@@ -3,10 +3,27 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
 
+// 답변 아래에 보여 주는 출처 하나. 서버가 문서 저장소에서 꺼내 준 값이다.
+type Source = {
+  title: string;
+  publishedDate: string;
+  url: string;
+  hasUnreadAttachment: boolean;
+};
+
 type Message = {
   id: number;
   role: "user" | "assistant";
   text: string;
+  sources?: Source[];
+  hasMoreSources?: boolean;
+};
+
+type ChatResponse = {
+  answer?: string;
+  sources?: Source[];
+  hasMoreSources?: boolean;
+  error?: string;
 };
 
 const SEARCHING = "자료에서 찾는 중입니다…";
@@ -41,9 +58,11 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
     setWaiting(true);
 
     // 기다리는 말풍선을 답변(또는 오류 문구)으로 바꾼다.
-    const replaceAnswer = (answer: string) =>
+    const replaceAnswer = (answer: string, extra: Partial<Message> = {}) =>
       setMessages((previous) =>
-        previous.map((message) => (message.id === answerId ? { ...message, text: answer } : message)),
+        previous.map((message) =>
+          message.id === answerId ? { ...message, text: answer, ...extra } : message,
+        ),
       );
 
     try {
@@ -52,11 +71,14 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: text }),
       });
-      const data = (await res.json()) as { answer?: string; error?: string };
+      const data = (await res.json()) as ChatResponse;
       if (!res.ok || !data.answer) {
         throw new Error(data.error ?? FAILED);
       }
-      replaceAnswer(data.answer);
+      replaceAnswer(data.answer, {
+        sources: data.sources ?? [],
+        hasMoreSources: data.hasMoreSources ?? false,
+      });
     } catch (error) {
       replaceAnswer(error instanceof Error && error.message ? error.message : FAILED);
       // 오류가 나면 입력한 질문을 지우지 않고 입력 칸에 되돌려 놓는다.
@@ -109,15 +131,43 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
                     key={message.id}
                     className={message.role === "user" ? "flex justify-end" : "flex justify-start"}
                   >
-                    <p
-                      className={
-                        message.role === "user"
-                          ? "max-w-[80%] whitespace-pre-wrap rounded-2xl bg-zinc-900 px-4 py-2.5 text-white"
-                          : "max-w-[80%] whitespace-pre-wrap rounded-2xl border border-zinc-200 bg-white px-4 py-2.5"
-                      }
-                    >
-                      {message.text}
-                    </p>
+                    {message.role === "user" ? (
+                      <p className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-zinc-900 px-4 py-2.5 text-white">
+                        {message.text}
+                      </p>
+                    ) : (
+                      <div className="max-w-[80%] rounded-2xl border border-zinc-200 bg-white px-4 py-2.5">
+                        <p className="whitespace-pre-wrap">{message.text}</p>
+                        {/* ⑤ 출처: 누르면 공식 홈페이지의 해당 글이 새 창으로 열린다. */}
+                        {message.sources && message.sources.length > 0 && (
+                          <div className="mt-3 border-t border-zinc-200 pt-2.5 text-sm">
+                            <p className="font-semibold text-zinc-700">출처</p>
+                            <ol className="mt-1 flex list-decimal flex-col gap-1 pl-5">
+                              {message.sources.map((source) => (
+                                <li key={source.url}>
+                                  <a
+                                    href={source.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-700 underline-offset-2 hover:underline"
+                                  >
+                                    {source.title} · {source.publishedDate} ↗
+                                  </a>
+                                  {source.hasUnreadAttachment && (
+                                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
+                                      읽지 못한 첨부 있음
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                            {message.hasMoreSources && (
+                              <p className="mt-1.5 text-zinc-500">관련 문서가 더 있습니다</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

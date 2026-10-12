@@ -167,3 +167,38 @@ export async function generateAnswer(question: string, chunks: MatchedChunk[]): 
   }
   return validateAnswer(JSON.parse(json) as RawAnswer, chunks);
 }
+
+// 답변 아래에 보여 줄 출처 하나
+export type Source = {
+  title: string;
+  // "2026-09-29" 형식. 발표일이 없으면 "표기 없음"
+  publishedDate: string;
+  // 공식 홈페이지의 원문 주소
+  url: string;
+  hasUnreadAttachment: boolean;
+};
+
+// 출처는 최대 3개까지 보여 준다. (PRD 5장)
+export const MAX_SOURCES = 3;
+
+// 답변의 근거 문서 번호로 출처를 만든다.
+// 제목·발표일·주소는 AI가 쓴 글이 아니라 문서 저장소에서 찾아온 값을 쓴다. AI가 주소를 지어낼 수 없다.
+export function buildSources(
+  answer: Answer,
+  chunks: MatchedChunk[],
+): { sources: Source[]; hasMoreSources: boolean } {
+  const sources: Source[] = [];
+  for (const documentId of answer.documentIds.slice(0, MAX_SOURCES)) {
+    const chunk = chunks.find((item) => item.documentId === documentId);
+    if (chunk) {
+      sources.push({
+        title: chunk.title,
+        publishedDate: chunk.publishedDate ?? "표기 없음",
+        url: chunk.url,
+        hasUnreadAttachment: chunk.hasUnreadAttachment,
+      });
+    }
+  }
+  // 근거 문서가 4건 이상이면 앞의 3개만 보여 주고 "관련 문서가 더 있습니다"를 붙인다.
+  return { sources, hasMoreSources: answer.documentIds.length > MAX_SOURCES };
+}
