@@ -22,6 +22,7 @@ npm run db:selftest  # 저장 기능 점검 (시험용 글을 넣었다가 바�
 npm run db:samples   # 시험용 보도자료 넣기 (지우기: -- --remove)
 npm run db:reredact  # 거르는 규칙을 고친 뒤 저장된 문서에 다시 적용 (미리 보기: -- --dry-run)
 npm run search -- "질문"  # 검색 시험: 질문과 뜻이 가까운 문단 묶음 8개를 보여 준다
+npm run eval         # 성공 기준 측정: eval/questions.json의 질문 25개를 돌려 eval/results-모델.md에 저장
 npm run ingest       # 자료 가져오기 (일부만: -- --limit 20, 주소만 보기: -- --list-only). 실제 홈페이지에 접속한다
 ```
 

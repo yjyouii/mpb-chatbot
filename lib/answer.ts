@@ -184,6 +184,8 @@ export async function generateAnswer(
   question: string,
   chunks: MatchedChunk[],
   history: Turn[] = [],
+  // 정답률을 잴 때 다른 모델과 비교하려고 둔 자리. 평소에는 넣지 않는다.
+  model: string = ANSWER_MODEL,
 ): Promise<Answer> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -200,7 +202,7 @@ export async function generateAnswer(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: ANSWER_MODEL,
+      model,
       reasoning: { effort: "low" },
       instructions: buildInstructions(wantsDetail(question), allowClarify),
       input: [
