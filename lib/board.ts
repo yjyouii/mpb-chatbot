@@ -58,8 +58,26 @@ export async function politeFetch(url: string): Promise<Response> {
   return res;
 }
 
+export type Attachment = {
+  // 화면에 보이는 파일 이름
+  name: string;
+  url: string;
+};
+
+export type Post = {
+  url: string;
+  // 화면에 없는 값은 null. 저장할 때 "표기 없음"이 된다.
+  title: string | null;
+  department: string | null;
+  // "2026-10-01" 형식
+  publishedDate: string | null;
+  // 게시글 본문. 첨부파일의 내용은 들어 있지 않다.
+  body: string;
+  attachments: Attachment[];
+};
+
 // 목록 화면의 글 주소를 뒷부분 없는 원문 주소로 바꾼다. 글 주소가 아니면 null
-function toPostUrl(href: string): string | null {
+export function toPostUrl(href: string): string | null {
   const match = href.match(/\/web\/main\/bbs\/b_0001\/(\d+)/);
   return match ? `${ORIGIN}${BOARD_PATH}${match[1]}` : null;
 }
@@ -106,4 +124,73 @@ export async function collectLatestPosts(limit: number): Promise<PostSummary[]> 
     }
   }
   return posts;
+}
+
+// "2026.10.01" 같은 날짜를 "2026-10-01"로 바꾼다. 날짜 모양이 아니면 null
+function toIsoDate(text: string): string | null {
+  const match = text.match(/(\d{4})[.\-/]\s*(\d{1,2})[.\-/]\s*(\d{1,2})/);
+  if (!match) {
+    return null;
+  }
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+}
+
+// 글 화면의 HTML에서 제목, 담당 부서, 발표일, 본문, 첨부파일 목록을 뽑는다.
+// 작성자·연락처·이메일 칸은 읽지 않는다. (개인정보는 저장하지 않는다)
+export function parsePostPage(html: string, url: string): Post {
+  const $ = cheerio.load(html);
+  const view = $(".board-view-box").first();
+
+  // "담당부서", "작성일"처럼 이름표가 붙은 칸의 값을 찾는다.
+  const meta = (label: string): string =>
+    view
+      .find(".meta li")
+      .filter((_, item) => $(item).children("strong").text().trim() === label)
+      .children("span")
+      .first()
+      .text()
+      .trim();
+
+  const editor = view.find(".board-content .editor").first();
+  editor.find("br").replaceWith("\n");
+  const paragraphs = editor.children("p, div").length
+    ? editor
+        .children()
+        .map((_, element) => $(element).text())
+        .get()
+    : [editor.text()];
+  const body = paragraphs
+    .map((paragraph) => paragraph.replace(/\u00a0/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n");
+
+  const attachments: Attachment[] = [];
+  view.find(".board-attach li").each((_, item) => {
+    const href = $(item).find('a[href^="/web/main/file/download/uu/"]').attr("href");
+    if (href) {
+      attachments.push({
+        name: $(item).find(".name").text().trim(),
+        url: `${ORIGIN}${href}`,
+      });
+    }
+  });
+
+  return {
+    url,
+    title: view.find(".board-title").first().text().trim() || null,
+    department: meta("담당부서") || null,
+    publishedDate: toIsoDate(meta("작성일")),
+    body,
+    attachments,
+  };
+}
+
+// 글 1건을 열어 읽는다. 주소 뒤에 ?cp=1&… 같은 것이 붙어 있어도 된다.
+export async function fetchPost(href: string): Promise<Post> {
+  const url = toPostUrl(href);
+  if (!url) {
+    throw new Error(`보도자료 게시판의 글 주소가 아닙니다: ${href}`);
+  }
+  const res = await politeFetch(url);
+  return parsePostPage(await res.text(), url);
 }
