@@ -1,36 +1,98 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# mpb챗봇
 
-## Getting Started
+기관 공식 홈페이지의 보도자료를 근거로 질문에 답하고, 답의 출처를 함께 보여 주는 챗봇입니다.
 
-First, run the development server:
+실무자가 보고서를 쓰거나 다른 부서와 협의할 때 "그 내용이 어느 보도자료에 있었지?"를 찾느라 쓰는 시간을 줄이려고 만들었습니다. 문장으로 물으면 저장해 둔 보도자료에서 답을 찾아 주고, 출처를 누르면 공식 홈페이지의 원문으로 이동합니다.
+
+## 무엇을 하나요
+
+- **문장으로 질문**: 정확한 키워드를 몰라도 됩니다. 표현이 달라도 뜻이 가까운 문서를 찾습니다.
+- **출처 표시**: 답변마다 근거가 된 보도자료의 제목, 발표일, 원문 링크를 최대 3개 보여 줍니다.
+- **지어내지 않음**: 저장해 둔 보도자료에 답이 없으면 "자료에서 찾지 못했습니다"라고 답합니다.
+- **소관 부서 안내**: "이 업무는 어느 부서 소관이야?" 같은 질문에 보도자료의 담당 부서 표기를 근거로 답합니다.
+- **이어지는 질문**: "그건 언제까지야?"처럼 앞 내용을 가리키는 질문을 이해합니다.
+- **대화 기록**: 지난 대화는 사용자의 브라우저 안에만 저장되고, 한꺼번에 지울 수 있습니다.
+- **잠금**: 공용 비밀번호를 아는 사람만 쓸 수 있습니다.
+
+## 쓰는 자료
+
+기관 공식 홈페이지의 "보도자료" 게시판에 누구나 볼 수 있게 공개된 글만 씁니다. 게시글 본문과 PDF 첨부를 읽고, 담당자 이름·전화번호·이메일은 걸러 낸 뒤 저장합니다. 내부 문서나 비공개 자료는 쓰지 않습니다.
+
+## 어떻게 동작하나요
+
+```
+[자료 가져오기 — 관리자가 자기 컴퓨터에서 실행]
+보도자료 게시판 → 글과 PDF 읽기 → 개인정보 거르기 → 문단으로 나눠 저장
+
+[질문 응답 — 배포된 챗봇]
+질문 → 뜻이 가까운 문단 찾기 → AI가 그 문단만 근거로 답변 → 서버가 출처를 붙여 화면에 표시
+```
+
+출처의 제목과 주소는 AI가 쓰지 않고 서버가 저장소에서 꺼내 붙입니다. AI가 없는 링크를 지어낼 수 없습니다.
+
+## 사용 기술
+
+| 기술 | 맡는 일 |
+|---|---|
+| Next.js 16 · React 19 · TypeScript · Tailwind CSS | 화면과 서버 쪽 코드 |
+| OpenAI API | 답변 만들기, 문단을 뜻으로 찾을 수 있게 바꾸기 |
+| Supabase (PostgreSQL + pgvector) | 보도자료 저장과 뜻으로 찾기 |
+| Vercel | 배포 |
+
+## 문서
+
+이 프로젝트는 기획 → 계획 → 설계 → 구현 → 점검 순서로 만들었고, 단계마다 문서를 남겼습니다.
+
+| 문서 | 내용 |
+|---|---|
+| [PRD.md](PRD.md) | 서비스 기획서: 왜 만드는지, 무엇을 만들고 무엇을 만들지 않는지 |
+| [PLAN.md](PLAN.md) | 개발 계획: 성공 기준과 작업 26개 |
+| [DESIGN.md](DESIGN.md) | 설계서: 화면 구성, 데이터 흐름, 기술 선택 |
+| [CHECK.md](CHECK.md) | 점검 결과: 성공 기준 판정, 설계와의 차이, 보안 점검 |
+| [CLAUDE.md](CLAUDE.md) | AI 코딩 도구(Claude Code)와 함께 작업할 때의 규칙 |
+| [eval/](eval/) | 성공 기준 측정에 쓴 질문 25개와 결과 |
+
+## 직접 실행하려면
+
+Node.js 24 이상이 필요합니다.
+
+```bash
+npm install
+```
+
+프로젝트 폴더에 `.env` 파일을 만들고 아래 값을 넣습니다. 이 파일은 저장소에 올리지 않습니다.
+
+| 이름 | 용도 |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI API 키 |
+| `SUPABASE_URL` | Supabase 프로젝트 주소 |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase 서버용 키 |
+| `APP_PASSWORD` | 챗봇 잠금에 쓰는 공용 비밀번호 |
+| `SESSION_SECRET` | 잠금 통과 표시를 위조하지 못하게 하는 긴 무작위 값 |
+
+Supabase 프로젝트에 [supabase/migrations/](supabase/migrations/)의 SQL을 적용해 표를 만든 뒤, 개발 서버를 켭니다.
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+http://localhost:3000 을 열면 잠금 화면이 나옵니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 주요 명령
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| 명령 | 하는 일 |
+|---|---|
+| `npm run dev` | 개발 서버 켜기 |
+| `npm run build` | 배포용 빌드 |
+| `npm run lint` | 코드 검사 |
+| `npm run ingest` | 보도자료 가져오기 (실제 홈페이지에 접속합니다) |
+| `npm run db:check` | 저장된 문서 건수 확인 |
+| `npm run search -- "질문"` | 질문과 뜻이 가까운 문단 찾아 보기 |
+| `npm run eval` | 시험 질문 25개로 성공 기준 측정 |
 
-## Learn More
+## 알아 둘 점
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- 질문과 관련 문단은 답변을 만들기 위해 OpenAI로 전송됩니다. 개인정보나 비공개 내용은 질문에 적지 마세요.
+- 답변은 마지막으로 자료를 가져온 날까지의 보도자료를 기준으로 합니다. 화면 위쪽에 기준 날짜가 표시됩니다.
+- AI의 답변은 틀릴 수 있습니다. 인용하기 전에 출처를 눌러 원문을 확인하세요.
+- 홈페이지에서 수정되거나 삭제된 글은 반영되지 않습니다.
