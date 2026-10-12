@@ -14,6 +14,13 @@ import { collectLatestPosts, fetchPost } from "../lib/board.ts";
 import type { Post } from "../lib/board.ts";
 import { NOT_STATED, documentExists, saveDocument } from "../lib/documents.ts";
 import type { NewDocument } from "../lib/documents.ts";
+import {
+  clearFailure,
+  getCorpusStatus,
+  listFailures,
+  recordFailure,
+  recordRun,
+} from "../lib/ingest-log.ts";
 import { redactPersonalInfo } from "../lib/redact.ts";
 
 // 한 번 실행할 때 훑어보는 최신 글의 수
@@ -110,46 +117,77 @@ async function ingestOne(href: string, dryRun: boolean) {
 async function ingestLatest(limit: number) {
   console.log(`"보도자료" 게시판의 최신 글 ${limit}건을 가져옵니다. (요청 사이 1초 이상 쉼)\n`);
 
+  // 지난 실행에서 실패한 글을 먼저 다시 시도한다. 최신 글 범위 밖으로 밀렸어도 이어서 가져온다.
+  const previousFailures = await listFailures();
+  const previouslyFailed = new Set(previousFailures.map((failure) => failure.url));
+  if (previousFailures.length > 0) {
+    console.log(`지난번에 실패한 글 ${previousFailures.length}건을 먼저 다시 시도합니다.`);
+  }
+
   const summaries = await collectLatestPosts(limit);
   console.log(`목록에서 주소 ${summaries.length}건을 모았습니다. 글을 하나씩 엽니다.\n`);
+
+  const targets: { url: string; title: string }[] = [
+    ...previousFailures.map((failure) => ({ url: failure.url, title: "(지난번 실패한 글)" })),
+    ...summaries.filter((summary) => !previouslyFailed.has(summary.url)),
+  ];
 
   let saved = 0;
   let skipped = 0;
   let unreadAttachmentCount = 0;
   const failures: { url: string; reason: string }[] = [];
 
-  for (const [index, summary] of summaries.entries()) {
-    const label = `[${String(index + 1).padStart(3)}/${summaries.length}]`;
+  for (const [index, target] of targets.entries()) {
+    const label = `[${String(index + 1).padStart(3)}/${targets.length}]`;
     try {
       // 이미 저장된 글은 홈페이지에서 다시 열지 않는다.
-      if (await documentExists(summary.url)) {
+      if (await documentExists(target.url)) {
         skipped++;
-        console.log(`${label} ⏭️ 이미 있음 | ${summary.title}`);
-        continue;
+        console.log(`${label} ⏭️ 이미 있음 | ${target.title}`);
+      } else {
+        const post = await fetchPost(target.url);
+        const { document } = await buildDocument(post);
+        await saveDocument(document);
+        saved++;
+        if (document.hasUnreadAttachment) {
+          unreadAttachmentCount++;
+        }
+        console.log(
+          `${label} ✅ 저장 | ${post.title ?? NOT_STATED}${document.hasUnreadAttachment ? " (읽지 못한 첨부 있음)" : ""}`,
+        );
       }
-      const post = await fetchPost(summary.url);
-      const { document } = await buildDocument(post);
-      await saveDocument(document);
-      saved++;
-      if (document.hasUnreadAttachment) {
-        unreadAttachmentCount++;
+      if (previouslyFailed.has(target.url)) {
+        await clearFailure(target.url);
       }
-      console.log(
-        `${label} ✅ 저장 | ${post.title ?? NOT_STATED}${document.hasUnreadAttachment ? " (읽지 못한 첨부 있음)" : ""}`,
-      );
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      failures.push({ url: summary.url, reason });
-      console.log(`${label} ❌ 실패 | ${summary.title}\n        ${reason}`);
+      failures.push({ url: target.url, reason });
+      console.log(`${label} ❌ 실패 | ${target.title}\n        ${reason}`);
+      // 실패 목록에 올려 다음 실행 때 먼저 다시 시도하게 한다.
+      // 기록 자체가 안 되더라도 나머지 글은 계속 가져온다.
+      await recordFailure(target.url, reason).catch(() => {});
     }
   }
+
+  // 일부 글이 실패했더라도 끝까지 돌았으면 실행 기록을 남긴다.
+  await recordRun({
+    successCount: saved,
+    failureCount: failures.length,
+    unreadAttachmentCount,
+  });
 
   console.log(
     `\n성공 ${saved}건 / 실패 ${failures.length}건 / 읽지 못한 첨부 있는 글 ${unreadAttachmentCount}건 (이미 있어 건너뛴 글 ${skipped}건)`,
   );
-  for (const failure of failures) {
-    console.log(`  실패: ${failure.url}`);
+  if (failures.length > 0) {
+    console.log("\n실패한 글 (다음에 실행하면 먼저 다시 시도합니다)");
+    for (const failure of failures) {
+      console.log(`  - ${failure.url}\n    ${failure.reason}`);
+    }
   }
+
+  const status = await getCorpusStatus();
+  console.log(`\n지금 들어 있는 문서 ${status.documentCount}건`);
 }
 
 // 목록에서 최신 글의 주소를 모아 보여 준다.

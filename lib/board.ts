@@ -143,6 +143,9 @@ function toIsoDate(text: string): string | null {
 export function parsePostPage(html: string, url: string): Post {
   const $ = cheerio.load(html);
   const view = $(".board-view-box").first();
+  if (view.find(".board-title").length === 0) {
+    throw new Error("글 화면을 읽지 못했습니다. 없는 글이거나 홈페이지 화면 구조가 바뀌었습니다.");
+  }
 
   // "담당부서", "작성일"처럼 이름표가 붙은 칸의 값을 찾는다.
   const meta = (label: string): string =>

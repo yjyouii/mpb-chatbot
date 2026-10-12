@@ -46,5 +46,22 @@ for (const [table, label] of tables) {
   }
 }
 
+// 마지막으로 가져오기를 실행한 날을 보여 준다.
+// 화면 위쪽 "○월 ○일까지 가져온 자료 기준"에 쓰는 값이다.
+try {
+  const res = await fetch(`${url}/rest/v1/ingest_runs?select=ran_at&order=ran_at.desc&limit=1`, {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  });
+  const [lastRun] = await res.json();
+  console.log(
+    lastRun
+      ? `\n마지막 가져오기: ${new Date(lastRun.ran_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`
+      : "\n마지막 가져오기: 아직 실행한 적 없음",
+  );
+} catch {
+  failed = true;
+  console.log("\n❌ 마지막 가져오기 날짜를 읽지 못했습니다.");
+}
+
 console.log(failed ? "\n문서 저장소에 문제가 있습니다." : "\n문서 저장소 준비 완료.");
 process.exit(failed ? 1 : 0);
