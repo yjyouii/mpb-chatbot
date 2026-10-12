@@ -23,7 +23,7 @@ export type SaveResult =
   | { status: "saved"; documentId: number; chunkCount: number }
   | { status: "skipped" };
 
-async function documentExists(url: string): Promise<boolean> {
+export async function documentExists(url: string): Promise<boolean> {
   const rows = await dbRequest<{ id: number }[]>(
     `documents?select=id&url=eq.${encodeURIComponent(url)}`,
   );

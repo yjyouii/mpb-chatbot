@@ -1,18 +1,21 @@
 // 자료 가져오기 (관리자가 자기 컴퓨터에서 직접 실행한다)
 //
-// 목록 모으기:        npm run ingest
-// 일부만 모으기:      npm run ingest -- --limit 20
+// 최신 글 가져오기:   npm run ingest            (최신 150건을 훑어 새 글만 저장)
+// 일부만 가져오기:    npm run ingest -- --limit 20
+// 주소만 모아 보기:   npm run ingest -- --list-only
 // 글 1건 읽어 보기:   npm run ingest -- --url <글 주소> --dry-run
 // 글 1건 읽어 저장:   npm run ingest -- --url <글 주소>
 //
-// 지금은 목록에서 주소를 모으는 단계(PLAN 작업 8)와 글 1건을 읽어 저장하는 단계(작업 9)까지 한다.
-// 150건을 이어서 가져오는 단계는 다음 작업에서 붙인다.
+// 아직 PDF 첨부를 읽지 않는다. (PLAN 작업 11에서 추가)
 
 import { collectLatestPosts, fetchPost } from "../lib/board.ts";
-import { NOT_STATED, saveDocument } from "../lib/documents.ts";
+import { NOT_STATED, documentExists, saveDocument } from "../lib/documents.ts";
 
 // 한 번 실행할 때 훑어보는 최신 글의 수
 const DEFAULT_LIMIT = 150;
+// 임시 안전장치: 아직 PDF를 읽지 않아 본문만 저장되므로, 그 전에는 이 건수까지만 가져온다.
+// PDF 읽기와 개인정보 거르기가 끝나면 이 제한을 없앤다.
+const TRIAL_LIMIT = 20;
 
 // "--이름 값" 꼴로 적은 값을 읽는다. 없으면 null
 function readOption(name: string): string | null {
@@ -68,6 +71,50 @@ async function ingestOne(href: string, dryRun: boolean) {
   );
 }
 
+// 최신 글부터 limit건까지 훑으며, 아직 저장되지 않은 글만 열어 저장한다.
+async function ingestLatest(limit: number) {
+  console.log(`"보도자료" 게시판의 최신 글 ${limit}건을 가져옵니다. (요청 사이 1초 이상 쉼)\n`);
+
+  const summaries = await collectLatestPosts(limit);
+  console.log(`목록에서 주소 ${summaries.length}건을 모았습니다. 글을 하나씩 엽니다.\n`);
+
+  let saved = 0;
+  let skipped = 0;
+  const failures: { url: string; reason: string }[] = [];
+
+  for (const [index, summary] of summaries.entries()) {
+    const label = `[${String(index + 1).padStart(3)}/${summaries.length}]`;
+    try {
+      // 이미 저장된 글은 홈페이지에서 다시 열지 않는다.
+      if (await documentExists(summary.url)) {
+        skipped++;
+        console.log(`${label} ⏭️ 이미 있음 | ${summary.title}`);
+        continue;
+      }
+      const post = await fetchPost(summary.url);
+      await saveDocument({
+        url: post.url,
+        title: post.title,
+        publishedDate: post.publishedDate,
+        department: post.department,
+        body: post.body,
+        hasUnreadAttachment: post.attachments.length > 0,
+      });
+      saved++;
+      console.log(`${label} ✅ 저장 | ${post.title ?? NOT_STATED}`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push({ url: summary.url, reason });
+      console.log(`${label} ❌ 실패 | ${summary.title}\n        ${reason}`);
+    }
+  }
+
+  console.log(`\n성공 ${saved}건 / 실패 ${failures.length}건 (이미 있어 건너뛴 글 ${skipped}건)`);
+  for (const failure of failures) {
+    console.log(`  실패: ${failure.url}`);
+  }
+}
+
 // 목록에서 최신 글의 주소를 모아 보여 준다.
 async function listLatest(limit: number) {
   console.log(`"보도자료" 게시판에서 최신 글 ${limit}건의 주소를 모읍니다. (요청 사이 1초 이상 쉼)\n`);
@@ -85,15 +132,23 @@ async function listLatest(limit: number) {
 
   console.log(`\n주소 ${posts.length}건을 모았습니다.`);
   console.log(`담당 부서가 비어 있는 글 ${withoutDepartment}건, 발표일을 읽지 못한 글 ${withoutDate}건`);
-  console.log("아직 글을 열어 저장하지는 않습니다. (다음 작업에서 추가)");
+  console.log("주소만 모았습니다. 저장하지 않았습니다. (--list-only)");
 }
 
 try {
   const url = readOption("--url");
   if (url !== null) {
     await ingestOne(url, process.argv.includes("--dry-run"));
-  } else {
+  } else if (process.argv.includes("--list-only")) {
     await listLatest(readLimit());
+  } else {
+    const limit = readLimit();
+    if (limit > TRIAL_LIMIT) {
+      throw new Error(
+        `PDF 읽기(PLAN 작업 11)와 개인정보 거르기(작업 12)가 끝나기 전에는 ${TRIAL_LIMIT}건까지만 시험할 수 있습니다. 예: npm run ingest -- --limit ${TRIAL_LIMIT}`,
+      );
+    }
+    await ingestLatest(limit);
   }
 } catch (error) {
   // 긴 오류 기록 대신 무엇이 문제인지 한 줄로 보여 준다.
