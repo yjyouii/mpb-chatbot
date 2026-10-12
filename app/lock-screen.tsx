@@ -62,6 +62,8 @@ export default function LockScreen() {
           {error}
         </p>
       </form>
+      {/* 대화 기록이 이 브라우저에 남으므로 미리 알린다. (PRD 7장) */}
+      <p className="mt-2 text-sm text-zinc-500">공용 컴퓨터에서는 사용하지 마세요</p>
     </div>
   );
 }
