@@ -23,11 +23,21 @@ export type SaveResult =
   | { status: "saved"; documentId: number; chunkCount: number }
   | { status: "skipped" };
 
+// 글이 온전히 저장돼 있는지 본다.
+// 저장 도중 멈춰 문단 묶음 없이 문서만 남은 글은 검색되지 않으므로,
+// 발견하면 지우고 "없음"으로 답해 다시 가져오게 한다.
 export async function documentExists(url: string): Promise<boolean> {
-  const rows = await dbRequest<{ id: number }[]>(
-    `documents?select=id&url=eq.${encodeURIComponent(url)}`,
+  const rows = await dbRequest<{ id: number; chunks: { count: number }[] }[]>(
+    `documents?select=id,chunks(count)&url=eq.${encodeURIComponent(url)}`,
   );
-  return rows.length > 0;
+  if (rows.length === 0) {
+    return false;
+  }
+  if ((rows[0].chunks[0]?.count ?? 0) > 0) {
+    return true;
+  }
+  await deleteDocument(url);
+  return false;
 }
 
 export async function deleteDocument(url: string): Promise<void> {

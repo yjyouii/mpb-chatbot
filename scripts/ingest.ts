@@ -113,39 +113,23 @@ async function ingestOne(href: string, dryRun: boolean) {
   );
 }
 
-// 최신 글부터 limit건까지 훑으며, 아직 저장되지 않은 글만 열어 저장한다.
+// 지난번 실패한 글을 먼저 다시 시도한 뒤, 최신 글부터 limit건까지 훑어 아직 저장되지 않은 글만 저장한다.
 async function ingestLatest(limit: number) {
   console.log(`"보도자료" 게시판의 최신 글 ${limit}건을 가져옵니다. (요청 사이 1초 이상 쉼)\n`);
-
-  // 지난 실행에서 실패한 글을 먼저 다시 시도한다. 최신 글 범위 밖으로 밀렸어도 이어서 가져온다.
-  const previousFailures = await listFailures();
-  const previouslyFailed = new Set(previousFailures.map((failure) => failure.url));
-  if (previousFailures.length > 0) {
-    console.log(`지난번에 실패한 글 ${previousFailures.length}건을 먼저 다시 시도합니다.`);
-  }
-
-  const summaries = await collectLatestPosts(limit);
-  console.log(`목록에서 주소 ${summaries.length}건을 모았습니다. 글을 하나씩 엽니다.\n`);
-
-  const targets: { url: string; title: string }[] = [
-    ...previousFailures.map((failure) => ({ url: failure.url, title: "(지난번 실패한 글)" })),
-    ...summaries.filter((summary) => !previouslyFailed.has(summary.url)),
-  ];
 
   let saved = 0;
   let skipped = 0;
   let unreadAttachmentCount = 0;
   const failures: { url: string; reason: string }[] = [];
 
-  for (const [index, target] of targets.entries()) {
-    const label = `[${String(index + 1).padStart(3)}/${targets.length}]`;
+  // 글 1건을 처리한다. 이미 온전히 저장된 글은 홈페이지에서 다시 열지 않는다.
+  async function processTarget(label: string, url: string, title: string, wasFailed: boolean) {
     try {
-      // 이미 저장된 글은 홈페이지에서 다시 열지 않는다.
-      if (await documentExists(target.url)) {
+      if (await documentExists(url)) {
         skipped++;
-        console.log(`${label} ⏭️ 이미 있음 | ${target.title}`);
+        console.log(`${label} ⏭️ 이미 있음 | ${title}`);
       } else {
-        const post = await fetchPost(target.url);
+        const post = await fetchPost(url);
         const { document } = await buildDocument(post);
         await saveDocument(document);
         saved++;
@@ -156,26 +140,48 @@ async function ingestLatest(limit: number) {
           `${label} ✅ 저장 | ${post.title ?? NOT_STATED}${document.hasUnreadAttachment ? " (읽지 못한 첨부 있음)" : ""}`,
         );
       }
-      if (previouslyFailed.has(target.url)) {
-        await clearFailure(target.url);
+      if (wasFailed) {
+        await clearFailure(url);
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      failures.push({ url: target.url, reason });
-      console.log(`${label} ❌ 실패 | ${target.title}\n        ${reason}`);
+      failures.push({ url, reason });
+      console.log(`${label} ❌ 실패 | ${title}\n        ${reason}`);
       // 실패 목록에 올려 다음 실행 때 먼저 다시 시도하게 한다.
       // 기록 자체가 안 되더라도 나머지 글은 계속 가져온다.
-      await recordFailure(target.url, reason).catch(() => {});
+      await recordFailure(url, reason).catch(() => {});
     }
   }
 
-  // 일부 글이 실패했더라도 끝까지 돌았으면 실행 기록을 남긴다.
-  await recordRun({
-    successCount: saved,
-    failureCount: failures.length,
-    unreadAttachmentCount,
-  });
+  // ⓪ 지난 실행에서 실패한 글부터 다시 시도한다. 최신 글 범위 밖으로 밀렸어도 이어서 가져온다.
+  // 목록을 모으기 전에 하므로, 목록을 읽지 못하더라도 재시도는 이루어진다.
+  const previousFailures = await listFailures();
+  const previouslyFailed = new Set(previousFailures.map((failure) => failure.url));
+  if (previousFailures.length > 0) {
+    console.log(`지난번에 실패한 글 ${previousFailures.length}건을 먼저 다시 시도합니다.`);
+    for (const [index, failure] of previousFailures.entries()) {
+      const label = `[재시도 ${index + 1}/${previousFailures.length}]`;
+      await processTarget(label, failure.url, "(지난번 실패한 글)", true);
+    }
+    console.log("");
+  }
 
+  // ① 목록에서 최신 글의 주소를 모아 하나씩 처리한다.
+  let listError = "";
+  try {
+    const summaries = (await collectLatestPosts(limit)).filter(
+      (summary) => !previouslyFailed.has(summary.url),
+    );
+    console.log(`목록에서 새로 살펴볼 주소 ${summaries.length}건을 모았습니다. 글을 하나씩 엽니다.\n`);
+    for (const [index, summary] of summaries.entries()) {
+      const label = `[${String(index + 1).padStart(3)}/${summaries.length}]`;
+      await processTarget(label, summary.url, summary.title, false);
+    }
+  } catch (error) {
+    listError = error instanceof Error ? error.message : String(error);
+  }
+
+  // 결과는 무슨 일이 있어도 먼저 보여 준다.
   console.log(
     `\n성공 ${saved}건 / 실패 ${failures.length}건 / 읽지 못한 첨부 있는 글 ${unreadAttachmentCount}건 (이미 있어 건너뛴 글 ${skipped}건)`,
   );
@@ -186,8 +192,28 @@ async function ingestLatest(limit: number) {
     }
   }
 
-  const status = await getCorpusStatus();
-  console.log(`\n지금 들어 있는 문서 ${status.documentCount}건`);
+  if (listError) {
+    // 새 글이 있는지 끝까지 확인하지 못했으므로 실행 기록(기준 날짜)은 남기지 않는다.
+    throw new Error(
+      `게시판 목록을 끝까지 읽지 못했습니다. 잠시 뒤 다시 실행해 주세요. 화면의 기준 날짜는 바뀌지 않습니다. (${listError})`,
+    );
+  }
+
+  // ⑨ 일부 글이 실패했더라도 끝까지 돌았으면 실행 기록을 남긴다.
+  try {
+    await recordRun({
+      successCount: saved,
+      failureCount: failures.length,
+      unreadAttachmentCount,
+    });
+    const status = await getCorpusStatus();
+    console.log(`\n지금 들어 있는 문서 ${status.documentCount}건`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `글은 위와 같이 처리했지만 실행 기록을 남기지 못했습니다. 화면의 기준 날짜가 바뀌지 않을 수 있으니 다시 실행해 주세요. (${reason})`,
+    );
+  }
 }
 
 // 목록에서 최신 글의 주소를 모아 보여 준다.
