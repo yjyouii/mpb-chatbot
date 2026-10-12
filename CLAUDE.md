@@ -39,7 +39,7 @@ npm run ingest       # 자료 가져오기 (일부만: -- --limit 20, 주소만 
 
 ### 추가 기술 (DESIGN.md 3장에서 확정)
 
-- AI: OpenAI API (답변 만들기, 문단을 숫자로 바꾸기 — `text-embedding-3-large`, 길이 1536)
+- AI: OpenAI API (답변 만들기 — `gpt-6.1-sol` / 문단을 숫자로 바꾸기 — `text-embedding-3-large`, 길이 1536)
 - 서버 쪽 공용 코드는 `lib/`에, 관리자가 실행하는 스크립트는 `scripts/`에 둔다. 가져오기는 `scripts/ingest.ts`, 실행은 `npm run ingest`로 한다. 스크립트는 Node.js가 TypeScript를 바로 실행하므로, `lib/` 안팎의 상대 경로 import에는 `.ts` 확장자를 붙인다.
 - 문서 저장과 검색: Supabase 데이터베이스와 pgvector
 - 가져오기: cheerio(홈페이지 읽기), unpdf(PDF 글자 추출)
@@ -49,7 +49,7 @@ npm run ingest       # 자료 가져오기 (일부만: -- --limit 20, 주소만 
 
 임의로 고르지 말고, 아래에 적힌 시점에 선택지와 추천안을 제시해 사용자에게 확인받는다.
 
-- 답변용 AI 모델 (PLAN 작업 18)
+- 지금 남은 것은 없다. (답변용 모델은 `gpt-6.1-sol`로 확정. `lib/answer.ts`의 `ANSWER_MODEL` 한 줄만 고치면 바뀐다)
 
 새 패키지를 설치할 때는 먼저 이유를 설명하고 동의를 받는다. (아래 "외부 서비스 인증"에 적힌 CLI 설치는 예외다.)
 

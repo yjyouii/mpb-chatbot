@@ -9,12 +9,15 @@ type Message = {
   text: string;
 };
 
-// 답변 기능이 연결되기 전까지 보여 주는 임시 문구 (PLAN 작업 17~18에서 실제 답변으로 바뀐다)
-const NOT_CONNECTED_YET = "아직 답변 기능이 연결되지 않았습니다.";
+const SEARCHING = "자료에서 찾는 중입니다…";
+const FAILED = "답변을 가져오지 못했습니다. 잠시 뒤 다시 시도해 주세요";
 
 export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
+  // 답변을 기다리는 동안에는 새 질문을 보내지 못하게 한다.
+  const [waiting, setWaiting] = useState(false);
+  const nextId = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 새 말풍선이 생기면 맨 아래가 보이게 한다.
@@ -22,22 +25,50 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages]);
 
-  function send() {
+  async function send() {
     const text = question.trim();
-    if (!text) {
+    if (!text || waiting) {
       return;
     }
+    const answerId = nextId.current + 1;
     setMessages((previous) => [
       ...previous,
-      { id: previous.length, role: "user", text },
-      { id: previous.length + 1, role: "assistant", text: NOT_CONNECTED_YET },
+      { id: nextId.current, role: "user", text },
+      { id: answerId, role: "assistant", text: SEARCHING },
     ]);
+    nextId.current += 2;
     setQuestion("");
+    setWaiting(true);
+
+    // 기다리는 말풍선을 답변(또는 오류 문구)으로 바꾼다.
+    const replaceAnswer = (answer: string) =>
+      setMessages((previous) =>
+        previous.map((message) => (message.id === answerId ? { ...message, text: answer } : message)),
+      );
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: text }),
+      });
+      const data = (await res.json()) as { answer?: string; error?: string };
+      if (!res.ok || !data.answer) {
+        throw new Error(data.error ?? FAILED);
+      }
+      replaceAnswer(data.answer);
+    } catch (error) {
+      replaceAnswer(error instanceof Error && error.message ? error.message : FAILED);
+      // 오류가 나면 입력한 질문을 지우지 않고 입력 칸에 되돌려 놓는다.
+      setQuestion((current) => current || text);
+    } finally {
+      setWaiting(false);
+    }
   }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    send();
+    void send();
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -45,7 +76,7 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
     // 한글을 조합하는 중의 Enter는 글자를 확정하는 것이므로 보내지 않는다.
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
-      send();
+      void send();
     }
   }
 
@@ -108,7 +139,7 @@ export default function ChatScreen({ corpusLabel }: { corpusLabel: string }) {
               />
               <button
                 type="submit"
-                disabled={!question.trim()}
+                disabled={!question.trim() || waiting}
                 className="h-[3.25rem] shrink-0 rounded-xl bg-zinc-900 px-5 font-medium text-white disabled:bg-zinc-300"
               >
                 보내기
