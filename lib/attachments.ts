@@ -92,10 +92,12 @@ export async function readAttachments(
     }
   }
 
-  // 같은 이름의 PDF를 읽었으면 한글 파일은 읽지 못한 첨부로 치지 않는다.
-  const readBaseNames = new Set(readNames.map(baseNameOf));
+  // 한글 파일 이름이 읽은 PDF 이름으로 시작하면 읽지 못한 첨부로 치지 않는다.
+  // 같은 내용인데 이름 끝에 "_★", "v2" 같은 꼬리가 붙어 올라오는 경우가 있다.
+  const readBaseNames = readNames.map(baseNameOf);
   for (const file of hangulFiles) {
-    if (!readBaseNames.has(baseNameOf(file.name))) {
+    const hangulName = baseNameOf(file.name);
+    if (!readBaseNames.some((pdfName) => hangulName.startsWith(pdfName))) {
       unreadNames.push(file.name);
     }
   }
