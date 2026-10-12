@@ -27,7 +27,11 @@ export async function POST(request: Request) {
   try {
     const chunks = await searchChunks(question.trim());
     const answer = await generateAnswer(question.trim(), chunks);
-    return Response.json({ answer });
+    return Response.json({
+      kind: answer.kind,
+      answer: answer.text,
+      documentIds: answer.documentIds,
+    });
   } catch (error) {
     // 자세한 오류는 서버 기록에만 남기고, 화면에는 일반 문구만 보낸다.
     console.error("[api/chat]", error);
