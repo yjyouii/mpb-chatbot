@@ -40,7 +40,7 @@ npm run ingest       # 자료 가져오기 (일부만: -- --limit 20, 주소만 
 - AI: OpenAI API (답변 만들기, 문단을 숫자로 바꾸기 — `text-embedding-3-large`, 길이 1536)
 - 서버 쪽 공용 코드는 `lib/`에, 관리자가 실행하는 스크립트는 `scripts/`에 둔다. 가져오기는 `scripts/ingest.ts`, 실행은 `npm run ingest`로 한다. 스크립트는 Node.js가 TypeScript를 바로 실행하므로, `lib/` 안팎의 상대 경로 import에는 `.ts` 확장자를 붙인다.
 - 문서 저장과 검색: Supabase 데이터베이스와 pgvector
-- 가져오기: cheerio(홈페이지 읽기), PDF 글자 추출 도구
+- 가져오기: cheerio(홈페이지 읽기), unpdf(PDF 글자 추출)
 - 대화 기록: 브라우저 저장소(localStorage)
 
 ### 아직 정하지 않은 것

@@ -33,7 +33,10 @@ function isAllowedUrl(url: string): boolean {
 }
 
 // 홈페이지에 요청을 보낸다. 직전 요청과 1초 이상 간격을 둔다.
-export async function politeFetch(url: string): Promise<Response> {
+export async function politeFetch(
+  url: string,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
   if (!isAllowedUrl(url)) {
     throw new Error(`허용되지 않은 주소입니다: ${url}`);
   }
@@ -50,7 +53,7 @@ export async function politeFetch(url: string): Promise<Response> {
       Connection: "close",
     },
     // 응답이 오지 않으면 무한정 기다리지 않고 실패로 처리한다.
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     throw new Error(`홈페이지 요청 실패 (HTTP ${res.status}): ${url}`);
